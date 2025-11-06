@@ -1,0 +1,14 @@
+{
+  "name": "way2tushar.NativeAlerts",
+  "rootNamespace": "way2tushar.NativeAlerts",
+  "references": [],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}
