@@ -1,4 +1,3 @@
-// way2tushar/NativeAlerts/iOS/NativeAlerts.h
 #ifdef __cplusplus
 extern "C" {
 #endif

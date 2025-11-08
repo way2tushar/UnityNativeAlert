@@ -1,5 +1,10 @@
 // Assets/way2tushar/NativeAlerts/Runtime/NativeAlert.cs
 // Java-free Android + iOS bridge (namespace: way2tushar.NativeAlerts)
+// - Max 3 buttons (no list mode)
+// - Theme serialized as STRING ("System" | "Light" | "Dark")
+// - ANDROID: Material/DeviceDefault *_Dialog_Alert styles; "System" follows device night mode
+// - iOS: extern call (implemented in NativeAlerts.mm/.h)
+
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
@@ -27,6 +32,16 @@ namespace way2tushar.NativeAlerts
         public AlertTheme theme = AlertTheme.System;
     }
 
+    // Payload to serialize theme as STRING for native JSON
+    [Serializable]
+    class AlertOptionsPayload
+    {
+        public string title;
+        public string message;
+        public List<AlertButton> buttons;
+        public string theme; // "System" | "Light" | "Dark"
+    }
+
     public static class NativeAlert
     {
         static int _nextId = 1;
@@ -36,17 +51,30 @@ namespace way2tushar.NativeAlerts
         [DllImport("__Internal")] private static extern void _na_showAlert(string json, int id);
 #endif
 
+        /// <summary>Show a native popup. Returns pressed button index (0..n-1).</summary>
         public static Task<int> ShowAsync(AlertOptions options)
         {
             if (options == null) throw new ArgumentNullException(nameof(options));
             if (options.buttons == null || options.buttons.Count == 0)
                 options.buttons = new() { new AlertButton { text = "OK" } };
 
+            // Enforce max 3 across platforms
+            if (options.buttons.Count > 3)
+                options.buttons = options.buttons.GetRange(0, 3);
+
+            // Serialize THEME AS STRING
+            var payload = new AlertOptionsPayload
+            {
+                title = options.title,
+                message = options.message,
+                buttons = options.buttons,
+                theme = options.theme.ToString()
+            };
+            var json = JsonUtility.ToJson(payload);
+
             var id = _nextId++;
             var tcs = new TaskCompletionSource<int>();
             _pending[id] = tcs;
-
-            var json = JsonUtility.ToJson(options);
 
 #if UNITY_EDITOR
             Debug.Log($"[NativeAlert] Editor stub: {json}");
@@ -61,7 +89,7 @@ namespace way2tushar.NativeAlerts
             return tcs.Task;
         }
 
-        // Called from native iOS (UnitySendMessage payload "<id>|<index>")
+        /// <summary>iOS native calls this via UnitySendMessage with payload "&lt;id&gt;|&lt;index&gt;".</summary>
         public static void Resolve(string payload)
         {
             var parts = payload.Split('|');
@@ -81,6 +109,8 @@ namespace way2tushar.NativeAlerts
         }
 
 #if UNITY_ANDROID && !UNITY_EDITOR
+        // ---------------- ANDROID (no Gradle/aar) ----------------
+
         class OnClickProxy : AndroidJavaProxy
         {
             readonly int _id;
@@ -89,24 +119,9 @@ namespace way2tushar.NativeAlerts
                 : base("android.content.DialogInterface$OnClickListener")
             { _id = id; _index = index; }
 
-            // void onClick(DialogInterface dialog, int which)
             void onClick(AndroidJavaObject dialog, int which)
             {
                 TryResolve(_id, _index);
-                try { dialog?.Call("dismiss"); } catch { }
-            }
-        }
-
-        class OnItemClickProxy : AndroidJavaProxy
-        {
-            readonly int _id;
-            public OnItemClickProxy(int id)
-                : base("android.content.DialogInterface$OnClickListener")
-            { _id = id; }
-
-            void onClick(AndroidJavaObject dialog, int which)
-            {
-                TryResolve(_id, which);
                 try { dialog?.Call("dismiss"); } catch { }
             }
         }
@@ -121,67 +136,55 @@ namespace way2tushar.NativeAlerts
             {
                 try
                 {
+                    // Parse JSON (theme is a STRING)
                     var obj = new AndroidJavaObject("org.json.JSONObject", json);
-                    string title = obj.Call<string>("optString", "title", "");
-                    string message = obj.Call<string>("optString", "message", "");
-                    string themeStr = obj.Call<string>("optString", "theme", "System");
-                    var buttons = obj.Call<AndroidJavaObject>("optJSONArray", "buttons");
-                    if (buttons == null)
-                        buttons = new AndroidJavaObject("org.json.JSONArray");
+                    string title    = obj.Call<string>("optString", "title", "");
+                    string message  = obj.Call<string>("optString", "message", "");
+                    string themeStr = obj.Call<string>("optString", "theme", "System"); // "System"|"Light"|"Dark"
+                    var buttons     = obj.Call<AndroidJavaObject>("optJSONArray", "buttons");
+                    if (buttons == null) buttons = new AndroidJavaObject("org.json.JSONArray");
 
-                    // DeviceDefault dialog themes (framework)
-                    int themeId = 0; // System default
-                    if (themeStr == "Light")
-                        themeId = GetStyleId("android.R$style", "Theme_DeviceDefault_Light_Dialog_Alert");
-                    else if (themeStr == "Dark")
-                        themeId = GetStyleId("android.R$style", "Theme_DeviceDefault_Dialog_Alert");
+                    int count = Math.Min(buttons.Call<int>("length"), 3);
 
-                    AndroidJavaObject ctx = activity;
-                    if (themeId != 0)
-                        ctx = new AndroidJavaObject("android.view.ContextThemeWrapper", activity, themeId);
+                    // Resolve theme id:
+                    // - System: detect device night mode and pick Light/Dark theme accordingly
+                    // - Light/Dark: explicit mapping
+                    int themeId = themeStr == "System"
+                        ? ResolveSystemDialogThemeId(activity)
+                        : ResolveDialogThemeId(themeStr);
 
-                    var builder = new AndroidJavaObject("android.app.AlertDialog$Builder", ctx);
-                    if (!string.IsNullOrEmpty(title)) builder.Call<AndroidJavaObject>("setTitle", title);
+                    AndroidJavaObject builder =
+                        (themeId != 0)
+                        ? new AndroidJavaObject("android.app.AlertDialog$Builder", activity, themeId)
+                        : new AndroidJavaObject("android.app.AlertDialog$Builder", activity);
+
+                    if (!string.IsNullOrEmpty(title))   builder.Call<AndroidJavaObject>("setTitle", title);
                     if (!string.IsNullOrEmpty(message)) builder.Call<AndroidJavaObject>("setMessage", message);
                     builder.Call<AndroidJavaObject>("setCancelable", false);
 
-                    int count = buttons.Call<int>("length");
+                    // Map 1–3 buttons
                     if (count == 0)
                     {
                         builder.Call<AndroidJavaObject>("setPositiveButton", "OK", new OnClickProxy(id, 0));
                     }
-                    else if (count <= 3)
+                    else if (count == 1)
                     {
-                        int cancelIdx = IndexOfStyle(buttons, "Cancel");
-                        int destructiveIdx = FirstWithStyle(buttons, "Destructive", cancelIdx);
-                        int defaultIdx = FirstDefault(buttons, cancelIdx, destructiveIdx);
-
-                        if (destructiveIdx >= 0)
-                            builder.Call<AndroidJavaObject>(
-                                "setPositiveButton", BtnText(buttons, destructiveIdx), new OnClickProxy(id, destructiveIdx));
-                        if (cancelIdx >= 0)
-                            builder.Call<AndroidJavaObject>(
-                                "setNegativeButton", BtnText(buttons, cancelIdx), new OnClickProxy(id, cancelIdx));
-                        if (defaultIdx >= 0)
-                            builder.Call<AndroidJavaObject>(
-                                "setNeutralButton", BtnText(buttons, defaultIdx), new OnClickProxy(id, defaultIdx));
+                        builder.Call<AndroidJavaObject>("setPositiveButton", BtnText(buttons, 0), new OnClickProxy(id, 0));
                     }
-                    else
+                    else if (count == 2)
                     {
-                        // >3: List of items (immediate resolve)
-                        int n = count;
-                        string[] managed = new string[n];
-                        for (int i = 0; i < n; i++) managed[i] = BtnText(buttons, i);
-                        using (var javaArray = ToJavaStringArray(managed))
-                        {
-                            builder.Call<AndroidJavaObject>("setItems", javaArray, new OnItemClickProxy(id));
-                        }
-                        int cancelIdx = IndexOfStyle(buttons, "Cancel");
-                        if (cancelIdx >= 0)
-                            builder.Call<AndroidJavaObject>("setNegativeButton", BtnText(buttons, cancelIdx), new OnClickProxy(id, cancelIdx));
+                        builder.Call<AndroidJavaObject>("setPositiveButton", BtnText(buttons, 1), new OnClickProxy(id, 1));
+                        builder.Call<AndroidJavaObject>("setNegativeButton", BtnText(buttons, 0), new OnClickProxy(id, 0));
+                    }
+                    else // 3
+                    {
+                        builder.Call<AndroidJavaObject>("setPositiveButton", BtnText(buttons, 0), new OnClickProxy(id, 0));
+                        builder.Call<AndroidJavaObject>("setNegativeButton", BtnText(buttons, 1), new OnClickProxy(id, 1));
+                        builder.Call<AndroidJavaObject>("setNeutralButton",  BtnText(buttons, 2), new OnClickProxy(id, 2));
                     }
 
                     var dialog = builder.Call<AndroidJavaObject>("create");
+                    // Keep stock system look: no extra styling
                     dialog.Call("setCanceledOnTouchOutside", false);
                     dialog.Call("show");
                 }
@@ -193,14 +196,58 @@ namespace way2tushar.NativeAlerts
             }));
         }
 
-        static int GetStyleId(string className, string field)
+        /// <summary>
+        /// Map explicit "Light"/"Dark" to Material/DeviceDefault alert styles (single-card native look).
+        /// "System" should not call this (use ResolveSystemDialogThemeId).
+        /// </summary>
+        static int ResolveDialogThemeId(string themeStr)
         {
             try
             {
-                using var styleClass = new AndroidJavaClass(className);
-                return styleClass.GetStatic<int>(field);
+                using var style = new AndroidJavaClass("android.R$style");
+                if (themeStr == "Light")
+                {
+                    int id = 0;
+                    try { id = style.GetStatic<int>("Theme_Material_Light_Dialog_Alert"); } catch { }
+                    if (id == 0) { try { id = style.GetStatic<int>("Theme_DeviceDefault_Light_Dialog_Alert"); } catch { } }
+                    if (id == 0) { try { id = style.GetStatic<int>("Theme_Holo_Light_Dialog"); } catch { } } // last resort
+                    return id;
+                }
+                else if (themeStr == "Dark")
+                {
+                    int id = 0;
+                    try { id = style.GetStatic<int>("Theme_Material_Dialog_Alert"); } catch { }
+                    if (id == 0) { try { id = style.GetStatic<int>("Theme_DeviceDefault_Dialog_Alert"); } catch { } }
+                    if (id == 0) { try { id = style.GetStatic<int>("Theme_Holo_Dialog"); } catch { } } // last resort
+                    return id;
+                }
             }
-            catch { return 0; }
+            catch { }
+            return 0; // System handled elsewhere
+        }
+
+        /// <summary>
+        /// Decide Light/Dark from the device's current system setting (night mode) and reuse the explicit resolver.
+        /// </summary>
+        static int ResolveSystemDialogThemeId(AndroidJavaObject activity)
+        {
+            try
+            {
+                var res    = activity.Call<AndroidJavaObject>("getResources");
+                var config = res.Call<AndroidJavaObject>("getConfiguration");
+                int uiMode = config.Get<int>("uiMode");
+
+                var Conf       = new AndroidJavaClass("android.content.res.Configuration");
+                int NIGHT_MASK = Conf.GetStatic<int>("UI_MODE_NIGHT_MASK");
+                int NIGHT_YES  = Conf.GetStatic<int>("UI_MODE_NIGHT_YES");
+
+                bool isDark = (uiMode & NIGHT_MASK) == NIGHT_YES;
+                return ResolveDialogThemeId(isDark ? "Dark" : "Light");
+            }
+            catch
+            {
+                return 0; // fallback: use Activity theme
+            }
         }
 
         static string BtnText(AndroidJavaObject arr, int i)
@@ -208,48 +255,6 @@ namespace way2tushar.NativeAlerts
             var obj = arr.Call<AndroidJavaObject>("getJSONObject", i);
             return obj.Call<string>("optString", "text", "OK");
         }
-
-        static string BtnStyle(AndroidJavaObject arr, int i)
-        {
-            var obj = arr.Call<AndroidJavaObject>("getJSONObject", i);
-            return obj.Call<string>("optString", "style", "Default");
-        }
-
-        static int IndexOfStyle(AndroidJavaObject arr, string style)
-        {
-            int n = arr.Call<int>("length");
-            for (int i = 0; i < n; i++) if (BtnStyle(arr, i) == style) return i;
-            return -1;
-        }
-
-        static int FirstWithStyle(AndroidJavaObject arr, string style, int exclude)
-        {
-            int n = arr.Call<int>("length");
-            for (int i = 0; i < n; i++) if (i != exclude && BtnStyle(arr, i) == style) return i;
-            return -1;
-        }
-
-        static int FirstDefault(AndroidJavaObject arr, int a, int b)
-        {
-            int n = arr.Call<int>("length");
-            for (int i = 0; i < n; i++)
-                if (i != a && i != b && BtnStyle(arr, i) == "Default") return i;
-            for (int i = 0; i < n; i++) if (i != a && i != b) return i;
-            return -1;
-        }
-
-        static AndroidJavaObject ToJavaStringArray(string[] managed)
-        {
-            using var cls = new AndroidJavaClass("java.lang.reflect.Array");
-            using var stringClass = new AndroidJavaClass("java.lang.String");
-            var jArr = cls.CallStatic<AndroidJavaObject>("newInstance", stringClass, managed.Length);
-            for (int i = 0; i < managed.Length; i++)
-            {
-                using var s = new AndroidJavaObject("java.lang.String", managed[i]);
-                cls.CallStatic("set", jArr, i, s);
-            }
-            return jArr;
-        }
-#endif
+#endif // UNITY_ANDROID && !UNITY_EDITOR
     }
 }

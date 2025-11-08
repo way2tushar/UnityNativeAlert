@@ -1,4 +1,4 @@
-// way2tushar/NativeAlerts/iOS/NativeAlerts.mm
+
 #import <UIKit/UIKit.h>
 #import "NativeAlerts.h"
 
@@ -35,6 +35,10 @@ void _na_showAlert(const char* json, int callbackId)
     NSString *message = obj[@"message"] ?: @"";
     NSString *themeStr = obj[@"theme"] ?: @"System";
     NSArray  *buttons = obj[@"buttons"] ?: @[ @{@"text":@"OK",@"style":@"Default"} ];
+
+    if (buttons.count > 3) {
+        buttons = [buttons subarrayWithRange:NSMakeRange(0, 3)];
+    }
 
     dispatch_async(dispatch_get_main_queue(), ^{
         UIAlertController *ac = [UIAlertController alertControllerWithTitle:title.length?title:nil

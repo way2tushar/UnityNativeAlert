@@ -1,4 +1,3 @@
-// Assets/way2tushar/NativeAlerts/Runtime/NativeAlertBridge.cs
 using UnityEngine;
 
 namespace way2tushar.NativeAlerts
@@ -17,7 +16,7 @@ namespace way2tushar.NativeAlerts
             go.AddComponent<NativeAlertBridge>();
         }
 
-        // iOS delivers "<id>|<index>" via UnitySendMessage
+        // iOS uses UnitySendMessage to deliver "<id>|<index>"
         public void OnAlertResult(string payload)
         {
             NativeAlert.Resolve(payload);

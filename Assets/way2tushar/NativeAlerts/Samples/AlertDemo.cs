@@ -10,38 +10,26 @@ public class AlertDemo : MonoBehaviour
         await NativeAlert.ShowAsync(new AlertOptions
         {
             title = "Hello!",
-            message = "Welcome to NativeAlerts!"
+            message = "Welcome to NativeAlerts!",
+            theme = AlertTheme.Light,
+            buttons = new() { new() { text = "OK" } }
         });
+
     }
-    
+
     public async void OnClickConfirmationDialogBtn()
     {
         int result = await NativeAlert.ShowAsync(new AlertOptions
         {
             title = "Delete file?",
             message = "This action cannot be undone.",
-            theme = AlertTheme.Dark,
+            theme = AlertTheme.System,
             buttons = new() {
                 new() { text = "Cancel", style = AlertButtonStyle.Cancel },
                 new() { text = "Delete", style = AlertButtonStyle.Destructive }
             }
         });
-    }
-
-    public async void OnClickMultipleOptionsBtn()
-    {
-        int index = await NativeAlert.ShowAsync(new AlertOptions
-        {
-            title = "Choose difficulty",
-            message = "Select your desired level:",
-            buttons = new() {
-                new() { text = "Easy" },
-                new() { text = "Medium" },
-                new() { text = "Hard" },
-                new() { text = "Insane" }
-            }
-        });
-    }
+    }    
 
     public async void OnClickThemingBtn()
     {
