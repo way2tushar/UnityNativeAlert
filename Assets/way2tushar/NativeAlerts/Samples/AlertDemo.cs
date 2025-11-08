@@ -25,8 +25,8 @@ public class AlertDemo : MonoBehaviour
             message = "This action cannot be undone.",
             theme = AlertTheme.System,
             buttons = new() {
-                new() { text = "Cancel", style = AlertButtonStyle.Cancel },
-                new() { text = "Delete", style = AlertButtonStyle.Destructive }
+                new() { text = "Cancel" },
+                new() { text = "Delete" }
             }
         });
     }    
@@ -68,7 +68,7 @@ public class AlertDemo : MonoBehaviour
             title = "Confirm",
             message = $"Set language to {lang}?",
             buttons = new() {
-                new() { text = "Cancel", style = AlertButtonStyle.Cancel },
+                new() { text = "Cancel"},
                 new() { text = "Yes" }
             }
         });
