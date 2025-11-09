@@ -1,4 +1,4 @@
-# 🧩 way2tushar.NativeAlerts
+# 🧩 way2tushar.NativeAlerts — Documentation
 
 **NativeAlerts** is a Unity plugin that brings **native iOS and Android popup alerts** (using system `UIAlertController` and `AlertDialog`) directly into your Unity games and apps.  
 It supports:
@@ -132,40 +132,27 @@ await NativeAlert.ShowAsync(new AlertOptions {
 ### 🔵 **Activity 2: Confirmation Dialog**
 
 ```csharp
-int result = await NativeAlert.ShowAsync(new AlertOptions {
+int result = await NativeAlert.ShowAsync(new AlertOptions
+{
     title = "Delete file?",
     message = "This action cannot be undone.",
-    theme = AlertTheme.Dark,
+    theme = AlertTheme.System,
     buttons = new() {
-        new() { text = "Cancel", style = AlertButtonStyle.Cancel },
-        new() { text = "Delete", style = AlertButtonStyle.Destructive }
+        new() { text = "Cancel" },
+        new() { text = "Delete" }
     }
 });
 ```
 
 ---
 
-### 🟡 **Activity 3: Multiple Options**
+
+
+### 🟣 **Activity 3: Theming (Light/Dark/System)**
 
 ```csharp
-int index = await NativeAlert.ShowAsync(new AlertOptions {
-    title = "Choose difficulty",
-    message = "Select your desired level:",
-    buttons = new() {
-        new() { text = "Easy" },
-        new() { text = "Medium" },
-        new() { text = "Hard" },
-        new() { text = "Insane" }
-    }
-});
-```
-
----
-
-### 🟣 **Activity 4: Theming (Light/Dark/System)**
-
-```csharp
-await NativeAlert.ShowAsync(new AlertOptions {
+await NativeAlert.ShowAsync(new AlertOptions
+{
     title = "Theme Test",
     message = "This is the Dark theme preview.",
     theme = AlertTheme.Dark,
@@ -175,10 +162,11 @@ await NativeAlert.ShowAsync(new AlertOptions {
 
 ---
 
-### 🔴 **Activity 5: Complex Workflow**
+### 🔴 **Activity 4: Complex Workflow**
 
 ```csharp
-int langIndex = await NativeAlert.ShowAsync(new AlertOptions {
+int langIndex = await NativeAlert.ShowAsync(new AlertOptions
+{
     title = "Language",
     message = "Select your language",
     buttons = new() {
@@ -188,18 +176,20 @@ int langIndex = await NativeAlert.ShowAsync(new AlertOptions {
     }
 });
 
-string lang = langIndex switch {
+string lang = langIndex switch
+{
     0 => "English",
     1 => "Bangla",
     2 => "Hindi",
     _ => "Unknown"
 };
 
-int confirm = await NativeAlert.ShowAsync(new AlertOptions {
+int confirm = await NativeAlert.ShowAsync(new AlertOptions
+{
     title = "Confirm",
     message = $"Set language to {lang}?",
     buttons = new() {
-        new() { text = "Cancel", style = AlertButtonStyle.Cancel },
+        new() { text = "Cancel"},
         new() { text = "Yes" }
     }
 });
@@ -212,8 +202,6 @@ int confirm = await NativeAlert.ShowAsync(new AlertOptions {
 | Feature | Android | iOS |
 |----------|----------|-----|
 | Multiple buttons | Up to 3 (else list view) | Unlimited |
-| Cancel style | Negative button | Cancel button |
-| Destructive style | Positive button (red) | Red button |
 | Orientation changes | Safe | Safe |
 | Async await support | ✅ | ✅ |
 
@@ -241,7 +229,7 @@ int confirm = await NativeAlert.ShowAsync(new AlertOptions {
 
 ## 🧪 Sample Scene
 
-Open `Samples/AlertDemo.cs` — shows a dark-mode alert automatically.
+Open `Samples/Demo` — shows a dark-mode alert automatically.
 
 ---
 
